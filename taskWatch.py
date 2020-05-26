@@ -6,13 +6,15 @@
 #     History:
 #
 #      Date       Programmer        Description
-#      ---------- ---------------- ----------------------------
-#      11/06/2016 James Laderoute  Created
-#      05/23/2020 James Laderoute  Read,Save,SaveConfig,Header for Title,LargestAvailableIdNumber,
+#      ---------- ----------------  ----------------------------
+#      11/06/2016 James Laderoute   Created
+#      05/23/2020 James Laderoute   Read,Save,SaveConfig,Header for Title,LargestAvailableIdNumber,
 #                 capture WM_DELETE_WINDOW event using function exitApplication which will update the config info and
 #                 will write out all the current tasks. Select item now changes Active field from NotActive to Active.
 #                 Added balloon messages for the buttons. Time is now fully working. Refactored a number of function
 #                 names so they make more sense.
+#     05/25/2020  James Laderoute   Refactored code; but introducing a class object. So we only have one global
+#                 variable thru the code.
 #
 # ****************************************************************
 #  Copyright (c) James Laderoute, 2016, 2020
@@ -52,27 +54,28 @@ from datetime import datetime
 
 releaseVersion = "Beta 1.1"
 
-root = Tk()                     # this is the root widget of all other GUI widgets in the application
-textEntryWidget = 0             # this is the text text entry widget used to enter TEXT for a new task
-treeViewWidget = 0              # this is the treeView widget
-timerObj = None                 # this is the threaded timer object we use to update active tasks
-LargestAvailableIdNumber = 0    # this keeps track of the last id number; we use unique id numbers per task
-timeDict = {}                   # this dictionary keeps track of n seconds applied to each task item, we need this so
-                                # we can keep track of fractional seconds. This fractional second is needed when we are
-                                # sharing a time unit among multiple active/selected tasks.
+class MyApp():
+  def __init__(self):
+    self.root = Tk()                  # this is the root widget of all other GUI widgets in the application                  
+    self.textEntryWidget = 0          # this is the text text entry widget used to enter TEXT for a new task
+    self.treeViewWidget = 0           # this is the treeView widget                                                          
+    self.timerObj = None              # this is the threaded timer object we use to update active tasks                      
+    self.LargestAvailableIdNumber = 0  # this keeps track of the last id number; we use unique id numbers per task
+    self.timeDict = {}                # this dictionary keeps track of n seconds applied to each task item, we need this so  
+                                      # we can keep track of fractional seconds. This fractional second is needed when we are
+                                      # sharing a time unit among multiple active/selected tasks.          
+    self.balloon = None
+
+globalApp = MyApp() 
 
 def exitApplication():
-  global root
-  global timerObj
-  timerObj.cancel()
+  global globalApp
+  globalApp.timerObj.cancel()
   saveTasks()
-  root.destroy()
+  globalApp.root.destroy()
 
 def main():
-  global textEntryWidget
-  global treeViewWidget
-  global root
-  global balloon
+  global globalApp
 
   theCurrentWorkingDir = os.getcwd()
   print("Your directory is %s\n" % theCurrentWorkingDir)
@@ -81,17 +84,17 @@ def main():
 
   totalTime = "Total: ##:##:##"
   #root = Tk()
-  root.protocol("WM_DELETE_WINDOW", exitApplication)
-  root.title("Task Watcher " + releaseVersion )
-  root.option_add('*tearOff', False)  # don't allow tear-off menus
+  globalApp.root.protocol("WM_DELETE_WINDOW", exitApplication)
+  globalApp.root.title("Task Watcher " + releaseVersion )
+  globalApp.root.option_add('*tearOff', False)  # don't allow tear-off menus
 
   Pmw.initialise()
-  balloon = Pmw.Balloon(root)
+  globalApp.balloon = Pmw.Balloon(globalApp.root)
 
   # --------- Create a standard MenuBar ----------------
   
-  menubar = Menu(root)
-  root.config(menu = menubar)
+  menubar = Menu(globalApp.root)
+  globalApp.root.config(menu = menubar)
   file = Menu(menubar)
   edit = Menu(menubar)
   help_ = Menu(menubar)
@@ -109,28 +112,28 @@ def main():
   file.entryconfig('Save', accelerator = 'Ctrl + S')
   file.entryconfig('Exit', accelerator = 'Ctrl + Z')
   
-  root.columnconfigure(0, weight=1)
-  root.rowconfigure(0, weight=1)
+  globalApp.root.columnconfigure(0, weight=1)
+  globalApp.root.rowconfigure(0, weight=1)
   
   # ---------- Create Tree that displays all tasks
-  treeViewWidget = ttk.Treeview(root)
-  vsb = ttk.Scrollbar(root, orient="vertical", command=treeViewWidget.yview)
+  globalApp.treeViewWidget = ttk.Treeview(globalApp.root)
+  vsb = ttk.Scrollbar(globalApp.root, orient="vertical", command=globalApp.treeViewWidget.yview)
   vsb.grid(row=0,column=1, sticky=N+S)
-  treeViewWidget.configure(yscrollcommand=vsb.set)
+  globalApp.treeViewWidget.configure(yscrollcommand=vsb.set)
 
   columnNames = {'IdNum' : 16, 'Category' : 60, 'Active': 50, 'Hidden': 50, 'Created':100, 'Today': 100}  # dictionary
-  treeViewWidget["columns"] = ("IdNum", "Category", "Active", "Hidden", "Created", "Today")
+  globalApp.treeViewWidget["columns"] = ("IdNum", "Category", "Active", "Hidden", "Created", "Today")
   for name,colWidth in columnNames.items() :
-    treeViewWidget.column(name, width=colWidth)
-    treeViewWidget.heading(name, text=name)
-  treeViewWidget.heading('#0', text='Task Name')
+    globalApp.treeViewWidget.column(name, width=colWidth)
+    globalApp.treeViewWidget.heading(name, text=name)
+  globalApp.treeViewWidget.heading('#0', text='Task Name')
 
-  treeViewWidget.grid(row=0, column=0, sticky=N + E + W + S)
-  treeViewWidget.bind('<<TreeviewSelect>>', treeCallbackWhenSelectingATreeViewRow)
-  #treeViewWidget.config(selectmode = 'browse') # this allows only one item to be selected at a time
+  globalApp.treeViewWidget.grid(row=0, column=0, sticky=N + E + W + S)
+  globalApp.treeViewWidget.bind('<<TreeviewSelect>>', treeCallbackWhenSelectingATreeViewRow)
+  #globalApp.treeViewWidget.config(selectmode = 'browse') # this allows only one item to be selected at a time
 
   # --------- Create buttons on bottom
-  fr2 = Frame(root)
+  fr2 = Frame(globalApp.root)
   for i in range(10):
     fr2.columnconfigure(i, weight=1)
 
@@ -146,16 +149,16 @@ def main():
   
   Label(fr2, text=totalTime, textvariable=totalTime ).grid(row=0, column=i, sticky=W)
 
-  # ---------- Create new task textEntryWidget field
-  fr3 = Frame(root)
+  # ---------- Create new task globalApp.textEntryWidget field
+  fr3 = Frame(globalApp.root)
   for i in range(10):
     fr3.columnconfigure(i, weight=1)
     
   fr3.grid(row=2,column=0,sticky=W+E+S+N)
   createButtonBalloonWidget(fr3, "New>", "Create a new task", 0, 0)
-  textEntryWidget = Entry(fr3, width=40)
-  textEntryWidget.grid(row=0, column=1, sticky=W + E)
-  textEntryWidget.bind("<Return>", keypressCallbackForCreatingNewTask)
+  globalApp.textEntryWidget = Entry(fr3, width=40)
+  globalApp.textEntryWidget.grid(row=0, column=1, sticky=W + E)
+  globalApp.textEntryWidget.bind("<Return>", keypressCallbackForCreatingNewTask)
 
   # --------- read in created tasks
 
@@ -168,39 +171,37 @@ def main():
 
 
   # --------- go into main graphics loop now
-  root.mainloop()
+  globalApp.root.mainloop()
 
 
 # -------- FUNCTIONS ----------------------------
 def timerCallbackPerSecond():
-  global treeViewWidget
-  global timerObj
-  global timeDict
+  global globalApp
 
-  counts = len(treeViewWidget.selection())
+  counts = len(globalApp.treeViewWidget.selection())
   # Now we want to look at every selected task (these are active) and update it's time clock
-  for itemId in treeViewWidget.selection() :
-    value = treeViewWidget.set(itemId, column="#3")
+  for itemId in globalApp.treeViewWidget.selection() :
+    value = globalApp.treeViewWidget.set(itemId, column="#3")
     if value == "Active" :
       try:
-        nSeconds = timeDict[itemId]
+        nSeconds = globalApp.timeDict[itemId]
         nSeconds = nSeconds + 1.0 / counts
-        timeDict[itemId] = nSeconds
+        globalApp.timeDict[itemId] = nSeconds
         timevalue = convertSecondsToHMS( nSeconds )
-        treeViewWidget.set(itemId, column="#6", value=timevalue)
+        globalApp.treeViewWidget.set(itemId, column="#6", value=timevalue)
       except KeyError:
         print("key itemId not there ")
         print(itemId)
   # To keep the timer going we have to start it again
   # or I need to read more about timer.start()
-  timerObj = threading.Timer(1.0, timerCallbackPerSecond)
-  timerObj.start()
+  globalApp.timerObj = threading.Timer(1.0, timerCallbackPerSecond)
+  globalApp.timerObj.start()
 
 def createButtonBalloonWidget(widget, name, balloonText, rowvalue, columnvalue):
-  global balloon
+  global globalApp
   b=Button(widget, text=name, command=lambda: buttonCallbackWhenUserClicksAButton(name))
   b.grid(row=rowvalue, column=columnvalue, sticky=W+E)
-  balloon.bind(b, balloonText)
+  globalApp.balloon.bind(b, balloonText)
 
 def convertSecondsToHMS( nSeconds : float ) -> str :
   lhours =  int(nSeconds) // 3600
@@ -209,23 +210,23 @@ def convertSecondsToHMS( nSeconds : float ) -> str :
   return "%d:%d:%d" % (lhours,lminutes,lseconds)
 
 def deactivateAllTimers():
-  global treeViewWidget
-  for itemId in treeViewWidget.get_children() :
+  global globalApp
+  for itemId in globalApp.treeViewWidget.get_children() :
     changeTaskActiveToNotActive(itemId)
 
 def changeTaskActiveToNotActive(selectId):
-  global treeViewWidget
-  treeViewWidget.set(selectId, column="#3", value="NotActive")
+  global globalApp
+  globalApp.treeViewWidget.set(selectId, column="#3", value="NotActive")
 
 def changeTaskNotActiveToActive(selectId):
-  global treeViewWidget
-  treeViewWidget.set(selectId, column="#3", value="Active")
+  global globalApp
+  globalApp.treeViewWidget.set(selectId, column="#3", value="Active")
 
 def saveConfig():
-  global LargestAvailableIdNumber
+  global globalApp
   try:
     with open('user/myconfig.txt', 'w') as f:
-      line = "LargestAvailableIdNumber:" + str(LargestAvailableIdNumber) + "\n"
+      line = "LargestAvailableIdNumber:" + str(globalApp.LargestAvailableIdNumber) + "\n"
       f.write(line)
       f.close()
   except IOError as e:
@@ -250,17 +251,17 @@ def saveConfig():
 # HIDDEN: TRUE|FALSE
 
 def saveTasks():
-  global treeViewWidget
+  global globalApp
 
   # Always save updated configurations when we also save things
   saveConfig()
 
   x = open('user/filename.txt', 'w') # open file for write
-  for itemId in treeViewWidget.get_children():
-    line = "\nTITLE:^:" + treeViewWidget.item(itemId, "text") + "\n"
+  for itemId in globalApp.treeViewWidget.get_children():
+    line = "\nTITLE:^:" + globalApp.treeViewWidget.item(itemId, "text") + "\n"
     x.write(line)
-    taskIdNumber = int( treeViewWidget.set(itemId,"#1") )
-    fields = treeViewWidget.set(itemId)
+    taskIdNumber = int( globalApp.treeViewWidget.set(itemId,"#1") )
+    fields = globalApp.treeViewWidget.set(itemId)
     for part in fields:
       if "ACTIVE" != part.upper() and "TODAY" != part.upper() :
         line = part.upper() + ':^:' + fields[part] + '\n'
@@ -270,8 +271,7 @@ def saveTasks():
   x.close()
 
 def readTodaysTime(itemId, taskIdNumber : int) :
-  global timeDict
-  global treeViewWidget
+  global globalApp
 
   dirName = "user/{}".format(taskIdNumber)
   if os.path.isdir(dirName) :
@@ -281,16 +281,16 @@ def readTodaysTime(itemId, taskIdNumber : int) :
         rf = open(fname, 'r')
         lineSeconds = rf.readline()
         lineSeconds = lineSeconds.strip()
-        timeDict[itemId] = float(lineSeconds)
-        treeViewWidget.set(itemId, column="#6", value=convertSecondsToHMS(float(lineSeconds)))
+        globalApp.timeDict[itemId] = float(lineSeconds)
+        globalApp.treeViewWidget.set(itemId, column="#6", value=convertSecondsToHMS(float(lineSeconds)))
         rf.close()
       except IOError as e:
         print("Problem reading time info from file. (%s)\n" % e)
 
 def saveTodaysTime(itemId, taskIdNumber : int) :
-  global timeDict
+  global globalApp
 
-  if timeDict[itemId] >= 0.9 :
+  if globalApp.timeDict[itemId] >= 0.9 :
     dirName = "user/{}".format(taskIdNumber)
     if not os.path.isdir(dirName) :
       os.mkdir(dirName)
@@ -298,15 +298,13 @@ def saveTodaysTime(itemId, taskIdNumber : int) :
     fname = "user/{}/{}_sec.txt".format(taskIdNumber, date.today())
     try:
       wf = open(fname, 'w')
-      wf.write(str(timeDict[itemId]))
+      wf.write(str(globalApp.timeDict[itemId]))
       wf.close()
     except IOError as e:
       print("Problem saving time info for task id. (%s)\n" % e)
 
 def readTasks():
-  global treeViewWidget
-  global LargestAvailableIdNumber
-  global timeDict
+  global globalApp
 
   title=""
   idnum="0"
@@ -327,7 +325,7 @@ def readTasks():
           continue
         name, value = line.split(":",2)
         if name=="LargestAvailableIdNumber":
-          LargestAvailableIdNumber = int(value)
+          globalApp.LargestAvailableIdNumber = int(value)
       f.close()
   except IOError as e:
     print("Your file could not be opened. (%s)\n" % e)
@@ -346,7 +344,7 @@ def readTasks():
         if name=="TITLE":
           if title!="" : # a previous task has been read in process it
             iid = addTaskToTreeViewList(title=title, idnum=idnum, cat=category, createDate=createdDate)
-            LargestAvailableIdNumber = max(LargestAvailableIdNumber, int(idnum))
+            globalApp.LargestAvailableIdNumber = max(globalApp.LargestAvailableIdNumber, int(idnum))
             readTodaysTime(iid, idnum)
           title=value
           idnum="0"
@@ -367,9 +365,9 @@ def readTasks():
 
   if title != "":  # a previous task has been read in process it
     iid = addTaskToTreeViewList(title=title, idnum=idnum, cat=category, createDate=createdDate)
-    LargestAvailableIdNumber = max(LargestAvailableIdNumber, int(idnum))
+    globalApp.LargestAvailableIdNumber = max(globalApp.LargestAvailableIdNumber, int(idnum))
     readTodaysTime(iid, idnum)
-    treeViewWidget.focus(iid)
+    globalApp.treeViewWidget.focus(iid)
 
 # -------- CALLBACKS ----------------------------
 
@@ -377,24 +375,24 @@ def readTasks():
 # buttons such as: Stop, Delete, etc...
 #
 def buttonCallbackWhenUserClicksAButton(param):
-  global treeViewWidget
-  activeSel= treeViewWidget.selection()
+  global globalApp
+  activeSel= globalApp.treeViewWidget.selection()
   if activeSel :
     if param == "Stop" :
-      treeViewWidget.selection_remove(activeSel)
+      globalApp.treeViewWidget.selection_remove(activeSel)
       deactivateAllTimers()
     elif param == "Delete" :
-      treeViewWidget.delete(activeSel)
+      globalApp.treeViewWidget.delete(activeSel)
     elif param == "Hide" :
       print("TODO: ", param)
     elif param == "+1hr" :
       for iid in activeSel:
-        timeDict[iid] = timeDict[iid] + 3600.0
+        globalApp.timeDict[iid] += 3600.0
     elif param == "-1hr" :
       for iid in activeSel:
-        timeDict[iid] = timeDict[iid] - 3600.0
-        if timeDict[iid] < 0.0 :
-          timeDict[iid] = 0.0
+        globalApp.timeDict[iid] =- 3600.0
+        if globalApp.timeDict[iid] < 0.0 :
+          globalApp.timeDict[iid] = 0.0
   else:
     if param == ">>" :
       print("TODO: ",param)
@@ -404,9 +402,7 @@ def buttonCallbackWhenUserClicksAButton(param):
       buttonCallbackForCreatingNewTask()
 
 def addTaskToTreeViewList(title="NoTitle", idnum="id", cat="NoCategory", isactive="NotActive", ishidden="NotHidden", createDate="yyyy:mm:dd", todayTime="hh:mm:ss"):
-    global treeViewWidget
-    global LargestAvailableIdNumber
-    global timeDict
+    global globalApp
 
     if createDate=="yyyy:mm:dd":
       createDate = date.today()
@@ -414,13 +410,11 @@ def addTaskToTreeViewList(title="NoTitle", idnum="id", cat="NoCategory", isactiv
     if todayTime=="hh:mm:ss":
         todayTime="00:00:00"
     if idnum=="id":
-      LargestAvailableIdNumber = LargestAvailableIdNumber + 1
-      idnum = str(LargestAvailableIdNumber)
+      globalApp.LargestAvailableIdNumber += 1
+      idnum = str(globalApp.LargestAvailableIdNumber)
 
-    item = treeViewWidget.insert("", 'end', text=title, values=(idnum, cat, isactive, ishidden, createDate, todayTime))
-
-    timeDict[item] = 0.0  # number of seconds
-
+    item = globalApp.treeViewWidget.insert("", 'end', text=title, values=(idnum, cat, isactive, ishidden, createDate, todayTime))
+    globalApp.timeDict[item] = 0.0  # number of seconds
     return item
 
 #
@@ -428,48 +422,46 @@ def addTaskToTreeViewList(title="NoTitle", idnum="id", cat="NoCategory", isactiv
 # this function adds a new Task to the list
 #
 def keypressCallbackForCreatingNewTask(event):
-  global treeViewWidget
-  global textEntryWidget
-  value = textEntryWidget.get()
+  global globalApp
+  value = globalApp.textEntryWidget.get()
   if value :
     item = addTaskToTreeViewList(title=value)
-    treeViewWidget.focus(item)
-    activeSel = treeViewWidget.selection()
+    globalApp.treeViewWidget.focus(item)
+    activeSel = globalApp.treeViewWidget.selection()
     if activeSel :
-      treeViewWidget.selection_remove(activeSel)
-    treeViewWidget.selection_add(item)
-    textEntryWidget.delete(0, END)
+      globalApp.treeViewWidget.selection_remove(activeSel)
+    globalApp.treeViewWidget.selection_add(item)
+    globalApp.textEntryWidget.delete(0, END)
 
 #
 # When user clicks on the "New>" button we call this function.
 # this function adds a new Task to the list
 #
 def buttonCallbackForCreatingNewTask():
-  global treeViewWidget
-  global textEntryWidget
+  global globalApp
 
-  value = textEntryWidget.get()
+  value = globalApp.textEntryWidget.get()
   if value :
-    item = addTaskToTreeViewList(title=textEntryWidget.get())
-    treeViewWidget.focus(item)
+    item = addTaskToTreeViewList(title=globalApp.textEntryWidget.get())
+    globalApp.treeViewWidget.focus(item)
 
-    activeSel = treeViewWidget.selection()
+    activeSel = globalApp.treeViewWidget.selection()
     if activeSel :
-      treeViewWidget.selection_remove(activeSel)
-    treeViewWidget.selection_add(item)
-    textEntryWidget.delete(0, END)
+      globalApp.treeViewWidget.selection_remove(activeSel)
+    globalApp.treeViewWidget.selection_add(item)
+    globalApp.textEntryWidget.delete(0, END)
 
 #
 # When user clicks on an item in the treeViewWidget, this is called
 # We use this function to activate the Task's timer
 #
 def treeCallbackWhenSelectingATreeViewRow(event):
-  global treeViewWidget
-  if treeViewWidget.selection() :
+  global globalApp
+  if globalApp.treeViewWidget.selection() :
     # for each item NOT selected: item:Active=NotActive
     # for each item selected: item:Active=Active
     deactivateAllTimers()
-    for selectId in treeViewWidget.selection() :
+    for selectId in globalApp.treeViewWidget.selection() :
       changeTaskNotActiveToActive(selectId)
 
 if __name__ == "__main__":
